@@ -1,42 +1,42 @@
 name: Actualizar ratings
- 
+
 on:
   schedule:
     - cron: "0 9 * * *"     # 03:00 Tampico — ratings + slate
     - cron: "0 21 * * *"    # 15:00 Tampico — solo slate (cuotas frescas)
   workflow_dispatch:
- 
+
 permissions:
   contents: write
- 
+
 jobs:
   ratings:
     runs-on: ubuntu-latest
     timeout-minutes: 25
- 
+
     # El secreto se expone como variable de entorno del job.
     # No se puede consultar 'secrets' directamente en un 'if' de paso.
     env:
       ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
- 
+
     steps:
       - uses: actions/checkout@v4
- 
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
- 
+
       - name: Instalar dependencias
         run: pip install -r requirements.txt
- 
+
       # El histórico solo se reconstruye en la corrida de la madrugada.
       - name: Descargar resultados y calcular Elo
         if: github.event.schedule != '0 21 * * *'
         run: |
-          python ingesta.py
+          python ingesta.py --wta
           python exportar.py
- 
+
       - name: Verificar frescura
         if: github.event.schedule != '0 21 * * *'
         run: |
@@ -45,15 +45,15 @@ jobs:
           if [ "$ATRASO" -gt 10 ]; then
             echo "::warning::La fuente lleva $ATRASO dias sin actualizarse."
           fi
- 
+
       - name: Generar slate del dia
         if: env.ODDS_API_KEY != ''
         run: python slate.py
- 
+
       - name: Avisar si falta la llave
         if: env.ODDS_API_KEY == ''
         run: echo "::warning::Sin ODDS_API_KEY. No se genero el slate."
- 
+
       - name: Publicar cambios
         run: |
           git config user.name  "ratings-bot"
