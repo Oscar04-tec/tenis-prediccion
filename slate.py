@@ -24,6 +24,8 @@ REGIONES = "eu"          # Pinnacle vive aquí
 CREDITOS_MINIMOS = 40    # colchón para no quedarnos sin llamadas a media semana
 PESO_MODELO = 0.35
 UMBRAL_EV = 0.03
+EV_SOSPECHOSO = 0.20   # arriba de esto no es valor, es un error del modelo
+MIN_PARTIDOS = 20      # un Elo con menos partidos es ruido
 
 # La API no informa la superficie. Se infiere del nombre del torneo.
 SUPERFICIE = {
@@ -108,6 +110,7 @@ def main():
 
     datos = json.loads(RATINGS.read_text())
     ratings, coef = datos["ratings"], datos["calibracion"]
+    min_part = datos.get("minimo_partidos", MIN_PARTIDOS)
     pesos = datos["pesos_superficie"]
     catalogo = list(ratings)
 
@@ -149,6 +152,10 @@ def main():
             if a not in mejor or b not in mejor:
                 continue
 
+            na = ratings[ma].get("n", 0)
+            nb = ratings[mb].get("n", 0)
+            pocos = na < min_part or nb < min_part
+
             ea = w * ratings[ma].get(sup, ratings[ma]["ALL"]) + (1 - w) * ratings[ma]["ALL"]
             eb = w * ratings[mb].get(sup, ratings[mb]["ALL"]) + (1 - w) * ratings[mb]["ALL"]
             p_mod = calibrar(1 / (1 + 10 ** ((eb - ea) / 400)), coef)
@@ -181,8 +188,18 @@ def main():
                 "lados": [{**l, "p": round(l["p"], 4), "ev": round(l["ev"], 4)} for l in lados],
                 "mejor": top["jugador"],
                 "ev": round(top["ev"], 4),
+                "partidos_a": na, "partidos_b": nb,
                 "sin_referencia": pf is None,
-                "verde": top["ev"] >= UMBRAL_EV and (desacuerdo is None or desacuerdo <= 0.15),
+                "pocos_partidos": pocos,
+                "sospechoso": top["ev"] >= EV_SOSPECHOSO,
+                # Verde exige: valor suficiente, referencia de mercado, ambos
+                # jugadores con historial, y sin desacuerdo ni EV absurdo.
+                "verde": (
+                    UMBRAL_EV <= top["ev"] < EV_SOSPECHOSO
+                    and pf is not None
+                    and not pocos
+                    and desacuerdo is not None and desacuerdo <= 0.15
+                ),
             })
         time.sleep(0.3)
 
@@ -204,8 +221,14 @@ def main():
     if sin_rating:
         print(f"Sin rating ({len(sin_rating)}): {', '.join(sorted(sin_rating)[:8])}…")
     print(f"Créditos restantes: {restantes}")
-    for p in partidos[:5]:
-        print(f"  {p['ev']:+.1%}  {p['mejor']:<24} @{max(l['cuota'] for l in p['lados']):.2f}  {p['torneo']}")
+    for p in partidos[:8]:
+        marcas = []
+        if p["sospechoso"]: marcas.append("EV absurdo")
+        if p["sin_referencia"]: marcas.append("sin Pinnacle")
+        if p["pocos_partidos"]: marcas.append(f"pocos partidos {p['partidos_a']}/{p['partidos_b']}")
+        if p["desacuerdo"] and p["desacuerdo"] > 0.15: marcas.append("desacuerdo alto")
+        estado = "VERDE" if p["verde"] else ("descartado: " + ", ".join(marcas) if marcas else "bajo umbral")
+        print(f"  {p['ev']:+7.1%}  {p['mejor']:<24} {estado}")
 
 
 if __name__ == "__main__":
