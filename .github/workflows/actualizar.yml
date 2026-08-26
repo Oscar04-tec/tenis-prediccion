@@ -2,8 +2,9 @@ name: Actualizar ratings
 
 on:
   schedule:
-    - cron: "0 9 * * *"      # 09:00 UTC = 03:00 en Tampico
-  workflow_dispatch:          # botón manual en la pestaña Actions
+    - cron: "0 9 * * *"     # 03:00 Tampico — ratings + slate
+    - cron: "0 21 * * *"    # 15:00 Tampico — solo slate (cuotas frescas)
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -24,13 +25,15 @@ jobs:
       - name: Instalar dependencias
         run: pip install -r requirements.txt
 
+      # El histórico solo se reconstruye en la corrida de la madrugada.
       - name: Descargar resultados y calcular Elo
-        run: python ingesta.py
-
-      - name: Exportar JSON
-        run: python exportar.py
+        if: github.event.schedule != '0 21 * * *'
+        run: |
+          python ingesta.py
+          python exportar.py
 
       - name: Verificar frescura
+        if: github.event.schedule != '0 21 * * *'
         run: |
           ATRASO=$(python -c "from ingesta import frescura; print(frescura())")
           echo "Atraso de datos: $ATRASO días"
@@ -38,14 +41,21 @@ jobs:
             echo "::warning::La fuente lleva $ATRASO días sin actualizarse."
           fi
 
+      - name: Generar slate del día
+        if: ${{ secrets.ODDS_API_KEY != '' }}
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+        run: python slate.py
+
       - name: Publicar cambios
         run: |
           git config user.name  "ratings-bot"
           git config user.email "actions@github.com"
-          git add publico/ratings.json
+          git add publico/
           if git diff --staged --quiet; then
-            echo "Sin cambios en los ratings."
+            echo "Sin cambios."
           else
-            git commit -m "ratings: $(date -u +%Y-%m-%d)"
+            git commit -m "datos: $(date -u +'%Y-%m-%d %H:%M')"
+            git pull --rebase --autostash
             git push
           fi
