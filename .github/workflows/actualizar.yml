@@ -1,0 +1,51 @@
+name: Actualizar ratings
+
+on:
+  schedule:
+    - cron: "0 9 * * *"      # 09:00 UTC = 03:00 en Tampico
+  workflow_dispatch:          # botón manual en la pestaña Actions
+
+permissions:
+  contents: write
+
+jobs:
+  ratings:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Descargar resultados y calcular Elo
+        run: python ingesta.py
+
+      - name: Exportar JSON
+        run: python exportar.py
+
+      - name: Verificar frescura
+        run: |
+          ATRASO=$(python -c "from ingesta import frescura; print(frescura())")
+          echo "Atraso de datos: $ATRASO días"
+          if [ "$ATRASO" -gt 10 ]; then
+            echo "::warning::La fuente lleva $ATRASO días sin actualizarse."
+          fi
+
+      - name: Publicar cambios
+        run: |
+          git config user.name  "ratings-bot"
+          git config user.email "actions@github.com"
+          git add publico/ratings.json
+          if git diff --staged --quiet; then
+            echo "Sin cambios en los ratings."
+          else
+            git commit -m "ratings: $(date -u +%Y-%m-%d)"
+            git push
+          fi
