@@ -9,7 +9,7 @@ from pathlib import Path
 from ingesta import DB, frescura
 
 SALIDA = Path("publico")
-TOP = 400  # jugadores exportados; el resto casi nunca aparece en Draftea
+TOP = 900  # ATP + WTA juntos; el resto casi nunca tiene mercado
 
 
 def exportar():
