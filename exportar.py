@@ -30,6 +30,17 @@ def exportar():
         if j in nombres:
             ratings[j][s] = round(e, 1)
 
+    # Partidos jugados por cada uno. Un Elo con pocos partidos es ruido:
+    # en el backtest solo se evaluaron jugadores con 20+.
+    for j, n in con.execute(
+        "SELECT jugador, COUNT(*) FROM ("
+        "  SELECT winner_name AS jugador FROM partidos"
+        "  UNION ALL SELECT loser_name FROM partidos"
+        ") GROUP BY jugador"
+    ):
+        if j in ratings:
+            ratings[j]["n"] = n
+
     ultima = con.execute(
         "SELECT valor FROM meta WHERE clave='ultima_fecha_datos'"
     ).fetchone()
@@ -43,6 +54,7 @@ def exportar():
         "partidos_en_base": n_partidos,
         "jugadores": len(ratings),
         "calibracion": 0.769,
+        "minimo_partidos": 20,
         "pesos_superficie": {"Hard": 0.50, "Clay": 0.62, "Grass": 0.62, "Carpet": 0.55},
         "ratings": ratings,
     }
