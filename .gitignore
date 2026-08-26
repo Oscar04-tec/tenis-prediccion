@@ -1,0 +1,4 @@
+tenis.db
+*.csv
+__pycache__/
+.venv/
