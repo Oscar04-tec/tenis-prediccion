@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tenis · Elo por superficie</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  --papel:#1F1E1D;
+  --superficie:#262625;
+  --tinta:#E8E6E1;
+  --tinta-media:#A3A19B;
+  --tinta-suave:#7C7B76;
+  --linea:#3A3936;
+  --linea-fina:#302F2D;
+  --senal:#97C459;
+  --senal-suave:#27500A;
+  --alerta:#F09595;
+  --alerta-suave:#791F1F;
+  --mercado:#85B7EB;
+  --modelo:#EF9F27;
+  --r:8px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  color-scheme:dark;
+  background:var(--papel);
+  color:var(--tinta);
+  font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  font-feature-settings:"cv05","ss01";
+  font-size:15px;
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+.mono{font-family:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+h1,h2,h3{font-weight:500;margin:0}
+a{color:#85B7EB;text-decoration:none}
+a:hover{text-decoration:underline}
+.envoltura{max-width:1020px;margin:0 auto;padding:0 20px 72px}
+
+.estado{background:var(--superficie);border-bottom:0.5px solid var(--linea);font-family:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12px;color:var(--tinta-media)}
+.estado .fila{max-width:1020px;margin:0 auto;padding:11px 20px;display:flex;flex-wrap:wrap;gap:6px 22px;align-items:baseline}
+.estado b{color:var(--tinta);font-weight:500}
+.estado .sep{color:var(--linea)}
+.punto{width:7px;height:7px;border-radius:50%;background:#97C459;display:inline-block;margin-right:7px}
+.punto.viejo{background:#EF9F27}
+.punto.malo{background:#E24B4A}
+
+header.titulo{padding:36px 0 24px}
+header.titulo h1{font-size:23px;line-height:1.3;font-weight:600;letter-spacing:-0.02em}
+header.titulo p{margin:8px 0 0;color:var(--tinta-media);max-width:60ch;font-size:14px}
+
+section{padding:28px 0 0}
+.enc-seccion{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+.enc-seccion h2{font-size:16px;font-weight:600;letter-spacing:-0.01em}
+.enc-seccion .cuenta{font-family:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12px;color:var(--tinta-suave)}
+
+.partido{background:var(--superficie);border:0.5px solid var(--linea);border-radius:12px;padding:16px 20px;margin-bottom:12px}
+.partido.verde{border-left:3px solid var(--senal);border-radius:0 12px 12px 0}
+.partido.marcado{border-left:3px solid var(--alerta);border-radius:0 12px 12px 0}
+.p-sup{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-family:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12px;color:var(--tinta-suave)}
+.p-cuerpo{display:grid;grid-template-columns:minmax(0,1fr) 178px;gap:20px;margin-top:12px;align-items:start}
+@media(max-width:720px){.p-cuerpo{grid-template-columns:1fr}}
+.jugadores{display:flex;justify-content:space-between;gap:14px;align-items:baseline}
+.jug{font-weight:600;font-size:17px;line-height:1.3;letter-spacing:-0.01em}
+.jug.der{text-align:right}
+.jug small{display:block;font-family:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:11px;font-weight:400;color:var(--tinta-suave);margin-top:2px}
+
+.regla{margin-top:28px}
+.regla-caja{position:relative;height:40px}
+.regla-linea{position:absolute;left:0;right:0;top:15px;height:1px;background:var(--linea)}
+.regla-tick{position:absolute;top:12px;width:1px;height:7px;background:var(--linea-fina)}
+.brecha{position:absolute;top:12px;height:7px;background:#0C447C;border-radius:2px}
+.marca{position:absolute;top:8px;transform:translateX(-50%);text-align:center}
+.marca i{display:block;width:2px;height:15px;margin:0 auto;background:currentColor}
+.marca span{font-family:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:11px;white-space:nowrap;position:absolute;top:19px;left:50%;transform:translateX(-50%)}
+.marca.alto span{top:-15px}
+.m-mercado{color:var(--mercado)}
+.m-modelo{color:var(--modelo)}
+.m-final{color:var(--tinta)}
+.m-final i{width:9px;height:9px;border-radius:50%;margin-top:3px;background:var(--tinta)}
+.regla-pie{display:flex;justify-content:space-between;font-family:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:11px;color:var(--tinta-suave);margin-top:14px}
+
+.apuesta{border-left:0.5px solid var(--linea);padding-left:18px}
+@media(max-width:720px){.apuesta{border-left:0;border-top:0.5px solid var(--linea);padding-left:0;padding-top:14px}}
+.apuesta .lado{font-weight:600;font-size:15px;letter-spacing:-0.01em;line-height:1.3}
+.datos{margin:10px 0 0;font-family:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12px}
+.datos div{display:flex;justify-content:space-between;padding:4px 0;border-bottom:0.5px solid var(--linea-fina)}
+.datos dt{color:var(--tinta-media)}
+.datos b{font-weight:500;font-variant-numeric:tabular-nums}
+.ev-pos{color:var(--senal)}
+.ev-neg{color:var(--alerta)}
+
+.etiqueta{display:inline-block;font-size:11px;padding:3px 8px;border-radius:var(--r);margin:0 4px 6px 0}
+.e-verde{background:var(--senal-suave);color:var(--senal)}
+.e-roja{background:var(--alerta-suave);color:var(--alerta)}
+.e-gris{background:#3A3936;color:var(--tinta-media)}
+
+button{font-family:inherit;font-size:13px;cursor:pointer;border-radius:var(--r);border:0.5px solid #565550;background:transparent;color:var(--tinta);padding:7px 14px}
+button:hover{background:var(--papel)}
+button:active{transform:scale(.98)}
+button.fantasma{border-color:var(--linea)}
+button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:none;box-shadow:0 0 0 1px #378ADD,0 0 6px 1px #0C447C}
+button.mini{font-size:12px;padding:5px 10px}
+
+input,select{font-family:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:13px;padding:8px 9px;border:0.5px solid var(--linea);border-radius:var(--r);background:var(--superficie);color:var(--tinta);width:100%;height:36px}
+input:hover,select:hover{border-color:#565550}
+label{display:block;font-size:12px;color:var(--tinta-media);margin-bottom:5px}
+
+.formulario{background:var(--superficie);border:0.5px solid var(--linea);border-radius:12px;padding:16px 20px}
+.rejilla{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;align-items:end}
+.metricas{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:14px}
+.metrica{background:var(--superficie);border:0.5px solid var(--linea);border-radius:12px;padding:14px 16px}
+.metrica .k{font-size:13px;color:var(--tinta-media)}
+.metrica .v{font-weight:600;letter-spacing:-0.01em;font-size:24px;line-height:1.3;margin-top:2px}
+.metrica .n{font-family:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:11px;color:var(--tinta-suave)}
+
+table{width:100%;border-collapse:collapse;font-family:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12px;background:var(--superficie)}
+th{text-align:left;font-weight:400;font-size:12px;color:var(--tinta-media);padding:9px 10px;border-bottom:0.5px solid var(--linea);white-space:nowrap}
+td{padding:8px 10px;border-bottom:0.5px solid var(--linea-fina);white-space:nowrap}
+.tabla-marco{border:0.5px solid var(--linea);border-radius:12px;overflow:hidden;overflow-x:auto}
+tr.pend td{color:var(--tinta-media)}
+
+.nota{font-size:13px;color:var(--tinta-media);margin:12px 0 0}
+.vacio{background:var(--superficie);border:0.5px dashed var(--linea);border-radius:12px;padding:28px 18px;text-align:center;color:var(--tinta-media);font-size:14px}
+details{margin-top:12px}
+summary{font-size:13px;color:var(--tinta-media);cursor:pointer;padding:8px 0}
+footer{margin-top:40px;padding-top:16px;border-top:0.5px solid var(--linea);font-family:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:11px;color:var(--tinta-suave);display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap}
+@media (prefers-reduced-motion:no-preference){.partido{animation:entra .25s ease both}@keyframes entra{from{opacity:0;transform:translateY(4px)}}}
+</style>
+</head>
+<body>
+
+<div class="estado" id="estado">
+  <div class="fila"><span class="mono">Cargando datos…</span></div>
+</div>
+
+<div class="envoltura">
+
+  <header class="titulo">
+    <h1>Elo por superficie contra el mercado</h1>
+    <p>Slate del día con la brecha entre la probabilidad del modelo y la del mercado. La cifra que decide si esto sirve es el CLV a 200 apuestas, no el ROI de esta semana.</p>
+  </header>
+
+  <section>
+    <div class="enc-seccion">
+      <h2>Partidos de hoy</h2>
+      <span class="cuenta" id="cuenta-slate"></span>
+    </div>
+    <div id="lista-valor"></div>
+    <div id="lista-resto"></div>
+  </section>
+
+  <section>
+    <div class="enc-seccion">
+      <h2>Registro y CLV</h2>
+      <span class="cuenta" id="cuenta-progreso"></span>
+    </div>
+
+    <div class="metricas" id="metricas"></div>
+
+    <div class="formulario">
+      <div class="rejilla">
+        <div><label for="f-fecha">Fecha</label><input type="date" id="f-fecha"></div>
+        <div style="grid-column:span 2"><label for="f-sel">Selección</label><input id="f-sel" placeholder="Jugador"></div>
+        <div><label for="f-cuota">Cuota tomada</label><input id="f-cuota" type="number" step="0.01" placeholder="1.85"></div>
+        <div><label for="f-stake">Stake (MXN)</label><input id="f-stake" type="number" step="1" placeholder="200"></div>
+        <div><button id="btn-guardar">Guardar apuesta</button></div>
+      </div>
+      <p class="nota">La cuota de cierre y el resultado se llenan después, en la tabla. Usa siempre la cuota de cierre de Pinnacle: es la referencia contra la que se mide el CLV.</p>
+    </div>
+
+    <div class="tabla-marco" style="margin-top:12px">
+      <table id="tabla-registro">
+        <thead><tr>
+          <th>Fecha</th><th>Selección</th><th>Cuota</th><th>Stake</th>
+          <th>Cierre</th><th>CLV</th><th>Resultado</th><th>P/L</th><th></th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div id="registro-vacio"></div>
+
+    <div class="rejilla" style="margin-top:12px;max-width:340px">
+      <div><label for="f-banca">Banca (MXN)</label><input id="f-banca" type="number" step="100"></div>
+      <div><button class="fantasma" id="btn-exportar">Exportar CSV</button></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="enc-seccion">
+      <h2>Ratings</h2>
+      <span class="cuenta" id="cuenta-ratings"></span>
+    </div>
+    <div class="rejilla" style="max-width:520px;margin-bottom:12px">
+      <div style="grid-column:span 2"><label for="f-buscar">Buscar jugador</label><input id="f-buscar" placeholder="Sinner, Swiatek…"></div>
+      <div><label for="f-orden">Ordenar por</label>
+        <select id="f-orden"><option value="ALL">General</option><option value="Hard">Hard</option><option value="Clay">Clay</option><option value="Grass">Grass</option></select>
+      </div>
+    </div>
+    <div class="tabla-marco">
+      <table id="tabla-ratings">
+        <thead><tr><th>#</th><th>Jugador</th><th>General</th><th>Hard</th><th>Clay</th><th>Grass</th><th>Partidos</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    <span>Elo por superficie · calibración 0.769 · 63.4% de acierto en 19,024 partidos ATP · Brier 0.2193</span>
+    <span><a href="https://github.com/Oscar04-tec/tenis-prediccion">github.com/Oscar04-tec/tenis-prediccion</a></span>
+  </footer>
+</div>
+
+<script>
+const BASE="https://raw.githubusercontent.com/Oscar04-tec/tenis-prediccion/main/publico/";
+const ZONA="America/Monterrey";
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const pct=(x,d=1)=>(x*100).toFixed(d)+"%";
+
+/* Almacenamiento con respaldo en memoria (el preview no siempre permite localStorage) */
+const memoria={};
+const guarda={
+  leer(k,def){try{const v=localStorage.getItem(k);return v?JSON.parse(v):(k in memoria?memoria[k]:def)}catch(e){return k in memoria?memoria[k]:def}},
+  escribir(k,v){memoria[k]=v;try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+};
+
+let apuestas=guarda.leer("tenis_apuestas",[]);
+let banca=guarda.leer("tenis_banca",5000);
+let ratings=null;
+
+/* ---------- Carga ---------- */
+async function traer(archivo){
+  const r=await fetch(BASE+archivo+"?v="+Date.now(),{cache:"no-store"});
+  if(!r.ok) throw new Error(archivo+" respondió "+r.status);
+  return r.json();
+}
+
+async function cargar(){
+  try{
+    const [slate,rt]=await Promise.all([traer("slate.json"),traer("ratings.json")]);
+    ratings=rt;
+    pintarEstado(slate,rt);
+    pintarSlate(slate);
+    pintarRatings();
+  }catch(e){
+    $("#estado").innerHTML='<div class="fila"><span class="mono"><span class="punto malo"></span>No se pudieron leer los datos: '+esc(e.message)+'. Revisa que el workflow haya publicado en publico/.</span></div>';
+    $("#lista-valor").innerHTML='<div class="vacio">Sin datos que mostrar. El slate se regenera a las 3:00 y 15:00.</div>';
+  }
+}
+
+function pintarEstado(s,r){
+  const atraso=r.atraso_dias??0;
+  const clase=atraso===0?"":(atraso<=2?"viejo":"malo");
+  const hora=new Date(s.generado).toLocaleString("es-MX",{timeZone:ZONA,day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"});
+  const cred=s.creditos_restantes;
+  const claseCred=cred>100?"":(cred>30?"viejo":"malo");
+  $("#estado").innerHTML=`<div class="fila">
+    <span><span class="punto ${clase}"></span>Datos al <b>${esc(r.ultima_fecha_datos)}</b> · atraso ${atraso} d</span>
+    <span class="sep">|</span><span>Generado <b>${esc(hora)}</b></span>
+    <span class="sep">|</span><span><b>${r.partidos_en_base.toLocaleString("es-MX")}</b> partidos · <b>${r.jugadores}</b> jugadores</span>
+    <span class="sep">|</span><span><span class="punto ${claseCred}"></span>Créditos API <b>${cred}</b></span>
+  </div>`;
+}
+
+/* ---------- Slate ---------- */
+function kelly(p,c){
+  if(!(c>1)) return 0;
+  const f=(p*(c-1)-(1-p))/(c-1);
+  if(f<=0) return 0;
+  return Math.min(f/4,0.03);           // Kelly a un cuarto, tope 3% de banca
+}
+
+function tarjeta(m){
+  const lado=(m.lados||[]).find(l=>l.jugador===m.mejor)||m.lados?.[0]||{};
+  const marcado=m.sospechoso||m.pocos_partidos||m.sin_referencia;
+  const clase=m.verde?"verde":(marcado?"marcado":"");
+  const hora=new Date(m.inicio).toLocaleString("es-MX",{timeZone:ZONA,weekday:"short",hour:"2-digit",minute:"2-digit"});
+
+  const et=[];
+  if(m.verde) et.push('<span class="etiqueta e-verde">Pasa filtros</span>');
+  if(m.sospechoso) et.push('<span class="etiqueta e-roja">EV fuera de rango</span>');
+  if(m.pocos_partidos) et.push('<span class="etiqueta e-roja">Historial corto</span>');
+  if(m.sin_referencia) et.push('<span class="etiqueta e-roja">Sin Pinnacle</span>');
+  if(!m.verde&&!marcado) et.push('<span class="etiqueta e-gris">Sin valor</span>');
+
+  const f=kelly(lado.p??0,lado.cuota??0);
+  const stake=Math.round(f*banca);
+  const evClase=(lado.ev??0)>0?"ev-pos":"ev-neg";
+
+  return `<article class="partido ${clase}">
+    <div class="p-sup"><span>${esc(m.torneo)} · ${esc(m.superficie)}</span><span>${esc(hora)}</span></div>
+    <div class="p-cuerpo">
+      <div>
+        <div class="jugadores">
+          <div class="jug">${esc(m.a)}<small>Elo ${m.elo_a} · ${m.partidos_a} p</small></div>
+          <div class="jug der">${esc(m.b)}<small>Elo ${m.elo_b} · ${m.partidos_b} p</small></div>
+        </div>
+        ${regla(m)}
+      </div>
+      <div class="apuesta">
+        <div>${et.join("")}</div>
+        <div class="lado">${esc(m.mejor||"—")}</div>
+        <div class="datos">
+          <div><dt>Cuota</dt><b>${lado.cuota??"—"}</b></div>
+          <div><dt>Pinnacle ref.</dt><b>${lado.ref??"—"}</b></div>
+          <div><dt>Prob. final</dt><b>${lado.p!=null?pct(lado.p):"—"}</b></div>
+          <div><dt>EV</dt><b class="${evClase}">${lado.ev!=null?(lado.ev>0?"+":"")+pct(lado.ev):"—"}</b></div>
+          <div><dt>Stake sugerido</dt><b>${stake>0?"$"+stake+" ("+pct(f,1)+")":"—"}</b></div>
+        </div>
+        ${m.verde&&lado.cuota?`<button class="mini" style="margin-top:10px" data-sel="${esc(m.mejor)}" data-cuota="${lado.cuota}" data-stake="${stake}">Registrar</button>`:""}
+      </div>
+    </div>
+  </article>`;
+}
+
+/* Elemento firma: mercado, modelo y probabilidad final sobre un mismo eje 0–100 */
+function regla(m){
+  const mer=m.p_mercado_a, mod=m.p_modelo_a, fin=m.p_final_a;
+  if(mer==null||mod==null||fin==null) return "";
+  const a=Math.min(mer,mod)*100, b=Math.max(mer,mod)*100;
+  const ticks=[0,25,50,75,100].map(t=>`<span class="regla-tick" style="left:${t}%"></span>`).join("");
+  return `<div class="regla">
+    <div class="regla-caja">
+      <span class="regla-linea"></span>${ticks}
+      <span class="brecha" style="left:${a}%;width:${b-a}%"></span>
+      <span class="marca alto m-mercado" style="left:${mer*100}%"><i></i><span>mer ${pct(mer,0)}</span></span>
+      <span class="marca alto m-modelo" style="left:${mod*100}%"><i></i><span>mod ${pct(mod,0)}</span></span>
+      <span class="marca m-final" style="left:${fin*100}%"><i></i><span>fin ${pct(fin,0)}</span></span>
+    </div>
+    <div class="regla-pie"><span>Prob. de ${esc(m.a)} · desacuerdo ${pct(m.desacuerdo??0,1)}</span><span>Prob. de ${esc(m.b)}</span></div>
+  </div>`;
+}
+
+function pintarSlate(s){
+  const partidos=(s.partidos||[]).slice();
+  const valor=partidos.filter(m=>m.verde).sort((x,y)=>(y.ev??0)-(x.ev??0));
+  const resto=partidos.filter(m=>!m.verde).sort((x,y)=>new Date(x.inicio)-new Date(y.inicio));
+
+  $("#cuenta-slate").textContent=`${s.total_partidos??partidos.length} partidos · ${valor.length} pasan filtros`;
+
+  $("#lista-valor").innerHTML = valor.length
+    ? valor.map(tarjeta).join("")
+    : `<div class="vacio">Hoy ningún partido pasa los filtros. Eso es lo normal: no apostar es la jugada por defecto.</div>`;
+
+  $("#lista-resto").innerHTML = resto.length
+    ? `<details><summary>Ver los otros ${resto.length} partidos del slate</summary>${resto.map(tarjeta).join("")}</details>`
+    : "";
+
+  document.querySelectorAll("[data-sel]").forEach(b=>b.addEventListener("click",()=>{
+    $("#f-sel").value=b.dataset.sel;
+    $("#f-cuota").value=b.dataset.cuota;
+    $("#f-stake").value=b.dataset.stake;
+    $("#f-fecha").value=new Date().toISOString().slice(0,10);
+    $("#f-sel").scrollIntoView({behavior:"smooth",block:"center"});
+    $("#f-cuota").focus();
+  }));
+}
+
+/* ---------- Ratings ---------- */
+function pintarRatings(){
+  if(!ratings) return;
+  const q=$("#f-buscar").value.trim().toLowerCase();
+  const col=$("#f-orden").value;
+  const filas=Object.entries(ratings.ratings)
+    .filter(([n])=>!q||n.toLowerCase().includes(q))
+    .sort((a,b)=>(b[1][col]??0)-(a[1][col]??0))
+    .slice(0,60);
+  $("#cuenta-ratings").textContent=`${ratings.jugadores} con ${ratings.minimo_partidos}+ partidos · mostrando ${filas.length}`;
+  $("#tabla-ratings tbody").innerHTML=filas.map(([n,r],i)=>`<tr>
+    <td style="color:var(--tinta-suave)">${i+1}</td><td>${esc(n)}</td>
+    <td><b>${(r.ALL??0).toFixed(0)}</b></td><td>${(r.Hard??0).toFixed(0)}</td>
+    <td>${(r.Clay??0).toFixed(0)}</td><td>${(r.Grass??0).toFixed(0)}</td>
+    <td style="color:var(--tinta-suave)">${r.n}</td></tr>`).join("")
+    || `<tr><td colspan="7" style="color:var(--tinta-suave)">Ningún jugador con ese nombre.</td></tr>`;
+}
+
+/* ---------- Registro y CLV ---------- */
+function clv(a){
+  if(!a.cierre||!(a.cierre>1)) return null;
+  return a.cuota/a.cierre-1;
+}
+function pl(a){
+  if(a.resultado==="ganada") return a.stake*(a.cuota-1);
+  if(a.resultado==="perdida") return -a.stake;
+  return 0;
+}
+
+function pintarRegistro(){
+  const cuerpo=$("#tabla-registro tbody");
+  const orden=apuestas.slice().sort((x,y)=>y.fecha.localeCompare(x.fecha));
+  cuerpo.innerHTML=orden.map(a=>{
+    const c=clv(a), res=a.resultado||"pendiente";
+    const g=pl(a);
+    return `<tr class="${res==="pendiente"?"pend":""}">
+      <td>${esc(a.fecha)}</td><td>${esc(a.seleccion)}</td><td>${a.cuota.toFixed(2)}</td>
+      <td>$${a.stake}</td>
+      <td><input type="number" step="0.01" value="${a.cierre??""}" data-id="${a.id}" data-campo="cierre" style="width:74px;padding:3px 5px"></td>
+      <td class="${c==null?"":(c>=0?"ev-pos":"ev-neg")}">${c==null?"—":(c>0?"+":"")+pct(c,1)}</td>
+      <td><select data-id="${a.id}" data-campo="resultado" style="width:106px;padding:3px 5px">
+        <option value=""${res==="pendiente"?" selected":""}>pendiente</option>
+        <option value="ganada"${res==="ganada"?" selected":""}>ganada</option>
+        <option value="perdida"${res==="perdida"?" selected":""}>perdida</option>
+        <option value="anulada"${res==="anulada"?" selected":""}>anulada</option>
+      </select></td>
+      <td class="${g>0?"ev-pos":(g<0?"ev-neg":"")}">${res==="pendiente"?"—":(g>0?"+":"")+"$"+g.toFixed(0)}</td>
+      <td><button class="fantasma mini" data-borrar="${a.id}">Borrar</button></td>
+    </tr>`;
+  }).join("");
+
+  $("#registro-vacio").innerHTML=apuestas.length?"":'<div class="vacio">Todavía no hay apuestas. Registra la primera desde una tarjeta que pase filtros.</div>';
+
+  cuerpo.querySelectorAll("[data-campo]").forEach(el=>el.addEventListener("change",()=>{
+    const a=apuestas.find(x=>x.id===el.dataset.id); if(!a) return;
+    if(el.dataset.campo==="cierre") a.cierre=parseFloat(el.value)||null;
+    else a.resultado=el.value||null;
+    persistir();
+  }));
+  cuerpo.querySelectorAll("[data-borrar]").forEach(b=>b.addEventListener("click",()=>{
+    apuestas=apuestas.filter(x=>x.id!==b.dataset.borrar); persistir();
+  }));
+
+  pintarMetricas();
+}
+
+function pintarMetricas(){
+  const conCierre=apuestas.filter(a=>clv(a)!=null);
+  const medio=conCierre.length?conCierre.reduce((s,a)=>s+clv(a),0)/conCierre.length:null;
+  const positivas=conCierre.filter(a=>clv(a)>0).length;
+  const resueltas=apuestas.filter(a=>a.resultado==="ganada"||a.resultado==="perdida");
+  const invertido=resueltas.reduce((s,a)=>s+a.stake,0);
+  const ganancia=resueltas.reduce((s,a)=>s+pl(a),0);
+  const roi=invertido?ganancia/invertido:null;
+  const ganadas=resueltas.filter(a=>a.resultado==="ganada").length;
+
+  const m=(k,v,n)=>`<div class="metrica"><div class="k">${k}</div><div class="v">${v}</div><div class="n">${n}</div></div>`;
+  $("#metricas").innerHTML=
+    m("CLV medio", medio==null?"—":(medio>0?"+":"")+pct(medio,2), conCierre.length+" con cierre")+
+    m("CLV positivo", conCierre.length?pct(positivas/conCierre.length,0):"—", positivas+" de "+conCierre.length)+
+    m("ROI", roi==null?"—":(roi>0?"+":"")+pct(roi,1), "$"+ganancia.toFixed(0)+" sobre $"+invertido)+
+    m("Aciertos", resueltas.length?pct(ganadas/resueltas.length,0):"—", ganadas+" de "+resueltas.length)+
+    m("Muestra", apuestas.length+" / 200", apuestas.length>=200?"muestra suficiente":(200-apuestas.length)+" para leer el CLV");
+
+  $("#cuenta-progreso").textContent = medio==null
+    ? "El CLV aparece cuando captures cuotas de cierre"
+    : (medio>0?"CLV medio positivo · sigue acumulando muestra":"CLV medio negativo · el modelo va detrás del cierre");
+}
+
+function persistir(){ guarda.escribir("tenis_apuestas",apuestas); pintarRegistro(); }
+
+$("#btn-guardar").addEventListener("click",()=>{
+  const sel=$("#f-sel").value.trim();
+  const cuota=parseFloat($("#f-cuota").value);
+  const stake=parseFloat($("#f-stake").value);
+  const fecha=$("#f-fecha").value||new Date().toISOString().slice(0,10);
+  if(!sel||!(cuota>1)||!(stake>0)){ alert("Faltan datos: selección, cuota mayor a 1 y stake mayor a 0."); return; }
+  apuestas.push({id:String(Date.now()),fecha,seleccion:sel,cuota,stake,cierre:null,resultado:null});
+  $("#f-sel").value="";$("#f-cuota").value="";$("#f-stake").value="";
+  persistir();
+});
+
+$("#btn-exportar").addEventListener("click",()=>{
+  const filas=[["fecha","seleccion","cuota","stake","cierre","clv","resultado","pl"]]
+    .concat(apuestas.map(a=>[a.fecha,a.seleccion,a.cuota,a.stake,a.cierre??"",clv(a)??"",a.resultado??"",pl(a)]));
+  const csv=filas.map(f=>f.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+  const url=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+  const a=document.createElement("a"); a.href=url; a.download="apuestas_tenis.csv"; a.click();
+  URL.revokeObjectURL(url);
+});
+
+$("#f-banca").value=banca;
+$("#f-banca").addEventListener("change",e=>{
+  banca=parseFloat(e.target.value)||banca;
+  guarda.escribir("tenis_banca",banca);
+  cargar();
+});
+$("#f-buscar").addEventListener("input",pintarRatings);
+$("#f-orden").addEventListener("change",pintarRatings);
+$("#f-fecha").value=new Date().toISOString().slice(0,10);
+
+pintarRegistro();
+cargar();
+setInterval(cargar,15*60*1000);
+</script>
+</body>
+</html>
