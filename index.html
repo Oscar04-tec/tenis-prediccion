@@ -61,7 +61,7 @@ section{padding:28px 0 0}
 .enc-seccion .cuenta{font-family:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12px;color:var(--tinta-suave)}
 
 .partido{background:var(--superficie);border:0.5px solid var(--linea);border-radius:12px;padding:16px 20px;margin-bottom:12px}
-.partido.verde{border-left:3px solid var(--senal);border-radius:0 12px 12px 0}
+.partido.alta{border-left:3px solid var(--senal);border-radius:0 12px 12px 0}
 .partido.marcado{border-left:3px solid var(--alerta);border-radius:0 12px 12px 0}
 .p-sup{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-family:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12px;color:var(--tinta-suave)}
 .p-cuerpo{display:grid;grid-template-columns:minmax(0,1fr) 178px;gap:20px;margin-top:12px;align-items:start}
@@ -70,6 +70,7 @@ section{padding:28px 0 0}
 .jug{font-weight:600;font-size:17px;line-height:1.3;letter-spacing:-0.01em}
 .jug.der{text-align:right}
 .jug small{display:block;font-family:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:11px;font-weight:400;color:var(--tinta-suave);margin-top:2px}
+.jug.pick{color:var(--senal)}
 
 .regla{margin-top:28px}
 .regla-caja{position:relative;height:40px}
@@ -89,6 +90,8 @@ section{padding:28px 0 0}
 .apuesta{border-left:0.5px solid var(--linea);padding-left:18px}
 @media(max-width:720px){.apuesta{border-left:0;border-top:0.5px solid var(--linea);padding-left:0;padding-top:14px}}
 .apuesta .lado{font-weight:600;font-size:15px;letter-spacing:-0.01em;line-height:1.3}
+.confianza-barra{margin-top:8px;height:5px;border-radius:3px;background:var(--linea-fina);overflow:hidden}
+.confianza-relleno{height:100%;background:var(--senal)}
 .datos{margin:10px 0 0;font-family:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12px}
 .datos div{display:flex;justify-content:space-between;padding:4px 0;border-bottom:0.5px solid var(--linea-fina)}
 .datos dt{color:var(--tinta-media)}
@@ -143,8 +146,8 @@ footer{margin-top:40px;padding-top:16px;border-top:0.5px solid var(--linea);font
 <div class="envoltura">
 
   <header class="titulo">
-    <h1>Elo por superficie contra el mercado</h1>
-    <p>Slate del día con la brecha entre la probabilidad del modelo y la del mercado. La cifra que decide si esto sirve es el CLV a 200 apuestas, no el ROI de esta semana.</p>
+    <h1>Elo por superficie · quién gana y con qué probabilidad</h1>
+    <p>Predicción del modelo para cada partido del día. Los partidos con mayor confianza (probabilidad más alejada de 50-50) aparecen primero.</p>
   </header>
 
   <section>
@@ -235,6 +238,9 @@ let apuestas=guarda.leer("tenis_apuestas",[]);
 let banca=guarda.leer("tenis_banca",5000);
 let ratings=null;
 
+/* Umbral de confianza para separar "picks fuertes" del resto del slate */
+const UMBRAL_CONFIANZA=0.30;   // 0.30 ≈ probabilidad del pick por encima de 65%
+
 /* ---------- Carga ---------- */
 async function traer(archivo){
   const r=await fetch(BASE+archivo+"?v="+Date.now(),{cache:"no-store"});
@@ -278,76 +284,90 @@ function kelly(p,c){
 }
 
 function tarjeta(m){
-  const lado=(m.lados||[]).find(l=>l.jugador===m.mejor)||m.lados?.[0]||{};
-  const marcado=m.sospechoso||m.pocos_partidos||m.sin_referencia;
-  const clase=m.verde?"verde":(marcado?"marcado":"");
+  const alta=m.confianza>=UMBRAL_CONFIANZA;
+  const marcado=m.sin_referencia||m.sin_cuota;
+  const clase=alta?"alta":(marcado?"marcado":"");
   const hora=new Date(m.inicio).toLocaleString("es-MX",{timeZone:ZONA,weekday:"short",hour:"2-digit",minute:"2-digit"});
 
-  const et=[];
-  if(m.verde) et.push('<span class="etiqueta e-verde">Pasa filtros</span>');
-  if(m.sospechoso) et.push('<span class="etiqueta e-roja">EV fuera de rango</span>');
-  if(m.pocos_partidos) et.push('<span class="etiqueta e-roja">Historial corto</span>');
-  if(m.sin_referencia) et.push('<span class="etiqueta e-roja">Sin Pinnacle</span>');
-  if(!m.verde&&!marcado) et.push('<span class="etiqueta e-gris">Sin valor</span>');
+  // Lado del cuadro (a o b) que corresponde al pick del modelo, para cuota/EV si existen
+  const ladoPick=(m.lados||[]).find(l=>l.jugador===m.pick)||{};
 
-  const f=kelly(lado.p??0,lado.cuota??0);
-  const stake=Math.round(f*banca);
-  const evClase=(lado.ev??0)>0?"ev-pos":"ev-neg";
+  const et=[];
+  if(alta) et.push('<span class="etiqueta e-verde">Confianza alta</span>');
+  if(m.sin_cuota) et.push('<span class="etiqueta e-gris">Sin cuota todavía</span>');
+  else if(m.sin_referencia) et.push('<span class="etiqueta e-roja">Sin Pinnacle</span>');
+  if(!alta&&!marcado) et.push('<span class="etiqueta e-gris">Pareja</span>');
+
+  let stakeHtml="";
+  if(ladoPick.cuota){
+    const f=kelly(ladoPick.p??0,ladoPick.cuota??0);
+    const stake=Math.round(f*banca);
+    const evClase=(ladoPick.ev??0)>0?"ev-pos":"ev-neg";
+    stakeHtml=`
+      <div><dt>Cuota</dt><b>${ladoPick.cuota}</b></div>
+      <div><dt>EV</dt><b class="${evClase}">${ladoPick.ev!=null?(ladoPick.ev>0?"+":"")+pct(ladoPick.ev):"—"}</b></div>
+      <div><dt>Stake sugerido</dt><b>${stake>0?"$"+stake+" ("+pct(f,1)+")":"—"}</b></div>`;
+  }
 
   return `<article class="partido ${clase}">
     <div class="p-sup"><span>${esc(m.torneo)} · ${esc(m.superficie)}</span><span>${esc(hora)}</span></div>
     <div class="p-cuerpo">
       <div>
         <div class="jugadores">
-          <div class="jug">${esc(m.a)}<small>Elo ${m.elo_a} · ${m.partidos_a} p</small></div>
-          <div class="jug der">${esc(m.b)}<small>Elo ${m.elo_b} · ${m.partidos_b} p</small></div>
+          <div class="jug ${m.pick===m.a?"pick":""}">${esc(m.a)}<small>Elo ${m.elo_a} · ${m.partidos_a} p</small></div>
+          <div class="jug der ${m.pick===m.b?"pick":""}">${esc(m.b)}<small>Elo ${m.elo_b} · ${m.partidos_b} p</small></div>
         </div>
         ${regla(m)}
       </div>
       <div class="apuesta">
         <div>${et.join("")}</div>
-        <div class="lado">${esc(m.mejor||"—")}</div>
+        <div class="lado">${esc(m.pick||"—")} <span style="color:var(--tinta-media);font-weight:400">gana</span></div>
+        <div class="confianza-barra"><div class="confianza-relleno" style="width:${pct(m.prob_pick,0)}"></div></div>
         <div class="datos">
-          <div><dt>Cuota</dt><b>${lado.cuota??"—"}</b></div>
-          <div><dt>Pinnacle ref.</dt><b>${lado.ref??"—"}</b></div>
-          <div><dt>Prob. final</dt><b>${lado.p!=null?pct(lado.p):"—"}</b></div>
-          <div><dt>EV</dt><b class="${evClase}">${lado.ev!=null?(lado.ev>0?"+":"")+pct(lado.ev):"—"}</b></div>
-          <div><dt>Stake sugerido</dt><b>${stake>0?"$"+stake+" ("+pct(f,1)+")":"—"}</b></div>
+          <div><dt>Probabilidad</dt><b>${pct(m.prob_pick)}</b></div>
+          <div><dt>Confianza</dt><b>${pct(m.confianza,0)}</b></div>
+          ${stakeHtml}
         </div>
-        ${m.verde&&lado.cuota?`<button class="mini" style="margin-top:10px" data-sel="${esc(m.mejor)}" data-cuota="${lado.cuota}" data-stake="${stake}">Registrar</button>`:""}
+        ${ladoPick.cuota?`<button class="mini" style="margin-top:10px" data-sel="${esc(m.pick)}" data-cuota="${ladoPick.cuota}" data-stake="${Math.round(kelly(ladoPick.p??0,ladoPick.cuota??0)*banca)}">Registrar</button>`:""}
       </div>
     </div>
   </article>`;
 }
 
-/* Elemento firma: mercado, modelo y probabilidad final sobre un mismo eje 0–100 */
+/* Elemento firma: mercado, modelo y probabilidad final sobre un mismo eje 0–100.
+   Si no hay cuota de Pinnacle (mer==null) solo se dibuja el modelo. */
 function regla(m){
   const mer=m.p_mercado_a, mod=m.p_modelo_a, fin=m.p_final_a;
-  if(mer==null||mod==null||fin==null) return "";
-  const a=Math.min(mer,mod)*100, b=Math.max(mer,mod)*100;
+  if(mod==null||fin==null) return "";
   const ticks=[0,25,50,75,100].map(t=>`<span class="regla-tick" style="left:${t}%"></span>`).join("");
+  const brecha = mer!=null
+    ? (()=>{const a=Math.min(mer,mod)*100,b=Math.max(mer,mod)*100;return `<span class="brecha" style="left:${a}%;width:${b-a}%"></span>`})()
+    : "";
+  const marcaMercado = mer!=null
+    ? `<span class="marca alto m-mercado" style="left:${mer*100}%"><i></i><span>mer ${pct(mer,0)}</span></span>`
+    : "";
   return `<div class="regla">
     <div class="regla-caja">
       <span class="regla-linea"></span>${ticks}
-      <span class="brecha" style="left:${a}%;width:${b-a}%"></span>
-      <span class="marca alto m-mercado" style="left:${mer*100}%"><i></i><span>mer ${pct(mer,0)}</span></span>
+      ${brecha}
+      ${marcaMercado}
       <span class="marca alto m-modelo" style="left:${mod*100}%"><i></i><span>mod ${pct(mod,0)}</span></span>
       <span class="marca m-final" style="left:${fin*100}%"><i></i><span>fin ${pct(fin,0)}</span></span>
     </div>
-    <div class="regla-pie"><span>Prob. de ${esc(m.a)} · desacuerdo ${pct(m.desacuerdo??0,1)}</span><span>Prob. de ${esc(m.b)}</span></div>
+    <div class="regla-pie"><span>Prob. de ${esc(m.a)}</span><span>Prob. de ${esc(m.b)}</span></div>
   </div>`;
 }
 
 function pintarSlate(s){
   const partidos=(s.partidos||[]).slice();
-  const valor=partidos.filter(m=>m.verde).sort((x,y)=>(y.ev??0)-(x.ev??0));
-  const resto=partidos.filter(m=>!m.verde).sort((x,y)=>new Date(x.inicio)-new Date(y.inicio));
+  const alta=partidos.filter(m=>m.confianza>=UMBRAL_CONFIANZA).sort((x,y)=>(y.prob_pick??0)-(x.prob_pick??0));
+  const resto=partidos.filter(m=>m.confianza<UMBRAL_CONFIANZA).sort((x,y)=>new Date(x.inicio)-new Date(y.inicio));
 
-  $("#cuenta-slate").textContent=`${s.total_partidos??partidos.length} partidos · ${valor.length} pasan filtros`;
+  $("#cuenta-slate").textContent=`${s.total_partidos??partidos.length} partidos · ${alta.length} con confianza alta`;
 
-  $("#lista-valor").innerHTML = valor.length
-    ? valor.map(tarjeta).join("")
-    : `<div class="vacio">Hoy ningún partido pasa los filtros. Eso es lo normal: no apostar es la jugada por defecto.</div>`;
+  $("#lista-valor").innerHTML = alta.length
+    ? alta.map(tarjeta).join("")
+    : `<div class="vacio">Hoy ningún partido tiene una probabilidad claramente inclinada. Revisa el resto del slate abajo.</div>`;
 
   $("#lista-resto").innerHTML = resto.length
     ? `<details><summary>Ver los otros ${resto.length} partidos del slate</summary>${resto.map(tarjeta).join("")}</details>`
@@ -414,7 +434,7 @@ function pintarRegistro(){
     </tr>`;
   }).join("");
 
-  $("#registro-vacio").innerHTML=apuestas.length?"":'<div class="vacio">Todavía no hay apuestas. Registra la primera desde una tarjeta que pase filtros.</div>';
+  $("#registro-vacio").innerHTML=apuestas.length?"":'<div class="vacio">Todavía no hay apuestas. Registra la primera desde una tarjeta con cuota disponible.</div>';
 
   cuerpo.querySelectorAll("[data-campo]").forEach(el=>el.addEventListener("change",()=>{
     const a=apuestas.find(x=>x.id===el.dataset.id); if(!a) return;
