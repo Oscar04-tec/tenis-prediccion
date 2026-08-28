@@ -155,6 +155,11 @@ footer{margin-top:40px;padding-top:16px;border-top:0.5px solid var(--linea);font
       <h2>Partidos de hoy</h2>
       <span class="cuenta" id="cuenta-slate"></span>
     </div>
+    <div class="rejilla" style="max-width:320px;margin-bottom:16px">
+      <div><label for="f-torneo">Torneo</label>
+        <select id="f-torneo"><option value="">Todos</option></select>
+      </div>
+    </div>
     <div id="lista-valor"></div>
     <div id="lista-resto"></div>
   </section>
@@ -237,6 +242,7 @@ const guarda={
 let apuestas=guarda.leer("tenis_apuestas",[]);
 let banca=guarda.leer("tenis_banca",5000);
 let ratings=null;
+let slateActual=null;
 
 /* Umbral de confianza para separar "picks fuertes" del resto del slate */
 const UMBRAL_CONFIANZA=0.30;   // 0.30 ≈ probabilidad del pick por encima de 65%
@@ -252,7 +258,9 @@ async function cargar(){
   try{
     const [slate,rt]=await Promise.all([traer("slate.json"),traer("ratings.json")]);
     ratings=rt;
+    slateActual=slate;
     pintarEstado(slate,rt);
+    pintarTorneos(slate);
     pintarSlate(slate);
     pintarRatings();
   }catch(e){
@@ -358,8 +366,17 @@ function regla(m){
   </div>`;
 }
 
+function pintarTorneos(s){
+  const sel=$("#f-torneo");
+  const actual=sel.value;
+  const torneos=[...new Set((s.partidos||[]).map(m=>m.torneo))].sort((a,b)=>a.localeCompare(b,"es"));
+  sel.innerHTML='<option value="">Todos</option>'+torneos.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join("");
+  if(torneos.includes(actual)) sel.value=actual;   // conserva la selección al refrescar
+}
+
 function pintarSlate(s){
-  const partidos=(s.partidos||[]).slice();
+  const filtroTorneo=$("#f-torneo").value;
+  const partidos=(s.partidos||[]).filter(m=>!filtroTorneo||m.torneo===filtroTorneo);
   const alta=partidos.filter(m=>m.confianza>=UMBRAL_CONFIANZA).sort((x,y)=>(y.prob_pick??0)-(x.prob_pick??0));
   const resto=partidos.filter(m=>m.confianza<UMBRAL_CONFIANZA).sort((x,y)=>new Date(x.inicio)-new Date(y.inicio));
 
@@ -502,6 +519,7 @@ $("#f-banca").addEventListener("change",e=>{
 });
 $("#f-buscar").addEventListener("input",pintarRatings);
 $("#f-orden").addEventListener("change",pintarRatings);
+$("#f-torneo").addEventListener("change",()=>{ if(slateActual) pintarSlate(slateActual); });
 $("#f-fecha").value=new Date().toISOString().slice(0,10);
 
 pintarRegistro();
