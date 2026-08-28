@@ -1,6 +1,7 @@
 """
-Genera el slate del día: partidos próximos con probabilidad del modelo,
-probabilidad justa del mercado y valor esperado.
+Genera el slate del día: partidos próximos con la predicción del modelo
+(quién gana y con qué probabilidad). Ya no filtra por valor esperado (EV);
+muestra TODOS los partidos con rating suficiente.
 
     export ODDS_API_KEY=tu_llave
     python slate.py
@@ -23,9 +24,7 @@ RATINGS = SALIDA / "ratings.json"
 REGIONES = "eu"          # Pinnacle vive aquí
 CREDITOS_MINIMOS = 40    # colchón para no quedarnos sin llamadas a media semana
 PESO_MODELO = 0.35
-UMBRAL_EV = 0.03
-EV_SOSPECHOSO = 0.20   # arriba de esto no es valor, es un error del modelo
-MIN_PARTIDOS = 20      # un Elo con menos partidos es ruido
+MIN_PARTIDOS = 20        # un Elo con menos partidos es ruido
 
 # La API no informa la superficie. Se infiere del nombre del torneo.
 SUPERFICIE = {
@@ -85,7 +84,8 @@ def emparejar(nombre, catalogo, cache={}):
 
 
 def precios(evento):
-    """Mejor cuota disponible por lado, y la de Pinnacle como referencia."""
+    """Mejor cuota disponible por lado, y la de Pinnacle como referencia.
+    Puede devolver diccionarios vacíos si no hay bookmakers todavía."""
     mejor, pin = {}, {}
     for casa in evento.get("bookmakers", []):
         for mercado in casa.get("markets", []):
@@ -148,13 +148,17 @@ def main():
                 sin_rating.add(a if not ma else b)
                 continue
 
+            # Antes se descartaba el partido si faltaba cuota. Ahora se
+            # muestra igual: la predicción del modelo no depende de la cuota.
             mejor, pin = precios(ev)
-            if a not in mejor or b not in mejor:
-                continue
 
             na = ratings[ma].get("n", 0)
             nb = ratings[mb].get("n", 0)
             pocos = na < min_part or nb < min_part
+            if pocos:
+                # Sin historial suficiente el Elo es ruido; esto sí se
+                # sigue filtrando porque no es una predicción confiable.
+                continue
 
             ea = w * ratings[ma].get(sup, ratings[ma]["ALL"]) + (1 - w) * ratings[ma]["ALL"]
             eb = w * ratings[mb].get(sup, ratings[mb]["ALL"]) + (1 - w) * ratings[mb]["ALL"]
@@ -168,13 +172,16 @@ def main():
                 pf, margen, desacuerdo = None, None, None
                 p_final = p_mod
 
+            cuota_a = mejor.get(a)
+            cuota_b = mejor.get(b)
+
             lados = [
-                {"jugador": a, "p": p_final, "cuota": mejor[a],
-                 "ev": p_final * mejor[a] - 1, "ref": pin.get(a)},
-                {"jugador": b, "p": 1 - p_final, "cuota": mejor[b],
-                 "ev": (1 - p_final) * mejor[b] - 1, "ref": pin.get(b)},
+                {"jugador": a, "p": p_final, "cuota": cuota_a,
+                 "ev": None if cuota_a is None else round(p_final * cuota_a - 1, 4)},
+                {"jugador": b, "p": 1 - p_final, "cuota": cuota_b,
+                 "ev": None if cuota_b is None else round((1 - p_final) * cuota_b - 1, 4)},
             ]
-            top = max(lados, key=lambda x: x["ev"])
+            pick = lados[0] if p_final >= 0.5 else lados[1]
 
             partidos.append({
                 "torneo": d["title"], "superficie": sup,
@@ -185,26 +192,20 @@ def main():
                 "p_final_a": round(p_final, 4),
                 "margen_ref": None if margen is None else round(margen, 4),
                 "desacuerdo": None if desacuerdo is None else round(desacuerdo, 4),
-                "lados": [{**l, "p": round(l["p"], 4), "ev": round(l["ev"], 4)} for l in lados],
-                "mejor": top["jugador"],
-                "ev": round(top["ev"], 4),
+                "lados": [{**l, "p": round(l["p"], 4)} for l in lados],
+                # Nuevo: predicción directa para el dashboard.
+                "pick": pick["jugador"],
+                "prob_pick": round(pick["p"], 4),
+                "confianza": round(abs(p_final - 0.5) * 2, 4),  # 0 = moneda al aire, 1 = certeza total
                 "partidos_a": na, "partidos_b": nb,
                 "sin_referencia": pf is None,
-                "pocos_partidos": pocos,
-                "sospechoso": top["ev"] >= EV_SOSPECHOSO,
-                # Verde exige: valor suficiente, referencia de mercado, ambos
-                # jugadores con historial, y sin desacuerdo ni EV absurdo.
-                "verde": (
-                    UMBRAL_EV <= top["ev"] < EV_SOSPECHOSO
-                    and pf is not None
-                    and not pocos
-                    and desacuerdo is not None and desacuerdo <= 0.15
-                ),
+                "sin_cuota": cuota_a is None or cuota_b is None,
             })
         time.sleep(0.3)
 
-    partidos.sort(key=lambda x: -x["ev"])
-    verdes = [p for p in partidos if p["verde"]]
+    # Antes se ordenaba por EV descendente. Ahora por probabilidad del pick,
+    # para que los partidos "más claros" según el modelo queden arriba.
+    partidos.sort(key=lambda x: -x["prob_pick"])
 
     SALIDA.mkdir(exist_ok=True)
     (SALIDA / "slate.json").write_text(json.dumps({
@@ -212,23 +213,17 @@ def main():
         "creditos_restantes": restantes,
         "torneos": [d["title"] for d in tenis],
         "total_partidos": len(partidos),
-        "con_valor": len(verdes),
         "sin_rating": sorted(sin_rating)[:40],
         "partidos": partidos,
     }, ensure_ascii=False, separators=(",", ":")))
 
-    print(f"\nslate.json — {len(partidos)} partidos, {len(verdes)} con valor")
+    print(f"\nslate.json — {len(partidos)} partidos con predicción")
     if sin_rating:
         print(f"Sin rating ({len(sin_rating)}): {', '.join(sorted(sin_rating)[:8])}…")
     print(f"Créditos restantes: {restantes}")
-    for p in partidos[:8]:
-        marcas = []
-        if p["sospechoso"]: marcas.append("EV absurdo")
-        if p["sin_referencia"]: marcas.append("sin Pinnacle")
-        if p["pocos_partidos"]: marcas.append(f"pocos partidos {p['partidos_a']}/{p['partidos_b']}")
-        if p["desacuerdo"] and p["desacuerdo"] > 0.15: marcas.append("desacuerdo alto")
-        estado = "VERDE" if p["verde"] else ("descartado: " + ", ".join(marcas) if marcas else "bajo umbral")
-        print(f"  {p['ev']:+7.1%}  {p['mejor']:<24} {estado}")
+    for p in partidos[:10]:
+        extra = "sin cuota" if p["sin_cuota"] else "sin Pinnacle" if p["sin_referencia"] else ""
+        print(f"  {p['prob_pick']:6.1%}  {p['pick']:<24} vs {p['b'] if p['pick']==p['a'] else p['a']:<24} {extra}")
 
 
 if __name__ == "__main__":
