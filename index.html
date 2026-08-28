@@ -172,15 +172,29 @@ footer{margin-top:40px;padding-top:16px;border-top:0.5px solid var(--linea);font
 
     <div class="metricas" id="metricas"></div>
 
-    <div class="formulario">
+    <div class="formulario" id="caja-boleta" style="border-color:var(--senal);display:none">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
+        <strong style="font-size:14px">Boleta actual</strong>
+        <span class="mono" id="boleta-cuota" style="font-size:13px;color:var(--tinta-media)"></span>
+      </div>
+      <div id="boleta-lista" style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px"></div>
       <div class="rejilla">
         <div><label for="f-fecha">Fecha</label><input type="date" id="f-fecha"></div>
-        <div style="grid-column:span 2"><label for="f-sel">Selección</label><input id="f-sel" placeholder="Jugador"></div>
-        <div><label for="f-cuota">Cuota tomada</label><input id="f-cuota" type="number" step="0.01" placeholder="1.85"></div>
         <div><label for="f-stake">Stake (MXN)</label><input id="f-stake" type="number" step="1" placeholder="200"></div>
-        <div><button id="btn-guardar">Guardar apuesta</button></div>
+        <div><button id="btn-guardar">Guardar boleta</button></div>
+        <div><button class="fantasma" id="btn-vaciar">Vaciar</button></div>
       </div>
-      <p class="nota">La cuota de cierre y el resultado se llenan después, en la tabla. Usa siempre la cuota de cierre de Pinnacle: es la referencia contra la que se mide el CLV.</p>
+    </div>
+
+    <div class="formulario">
+      <div class="rejilla">
+        <div><label for="f-fecha-manual">Fecha</label><input type="date" id="f-fecha-manual"></div>
+        <div style="grid-column:span 2"><label for="f-sel">Selección (manual)</label><input id="f-sel" placeholder="Ej: Sinner + Alcaraz + Ruud"></div>
+        <div><label for="f-cuota">Cuota combinada</label><input id="f-cuota" type="number" step="0.01" placeholder="4.20"></div>
+        <div><label for="f-stake-manual">Stake (MXN)</label><input id="f-stake-manual" type="number" step="1" placeholder="200"></div>
+        <div><button id="btn-guardar-manual">Guardar manual</button></div>
+      </div>
+      <p class="nota">Usa esto para registrar una boleta ya cerrada (por ejemplo, capturada directo del apostador). La cuota de cierre y el resultado se llenan después, en la tabla.</p>
     </div>
 
     <div class="tabla-marco" style="margin-top:12px">
@@ -243,9 +257,14 @@ let apuestas=guarda.leer("tenis_apuestas",[]);
 let banca=guarda.leer("tenis_banca",5000);
 let ratings=null;
 let slateActual=null;
+let boleta=[];   // [{partido, sel, cuota}] — se vacía al guardar o al recargar la página, no se persiste
 
 /* Umbral de confianza para separar "picks fuertes" del resto del slate */
 const UMBRAL_CONFIANZA=0.30;   // 0.30 ≈ probabilidad del pick por encima de 65%
+/* Para medir calibración del modelo (CLV) importa registrar TODOS los picks
+   con el mismo stake, no dimensionar por Kelly — eso es para apostar en serio,
+   no para juntar muestra pareja. */
+const STAKE_FIJO=100;
 
 /* ---------- Carga ---------- */
 async function traer(archivo){
@@ -308,13 +327,10 @@ function tarjeta(m){
 
   let stakeHtml="";
   if(ladoPick.cuota){
-    const f=kelly(ladoPick.p??0,ladoPick.cuota??0);
-    const stake=Math.round(f*banca);
     const evClase=(ladoPick.ev??0)>0?"ev-pos":"ev-neg";
     stakeHtml=`
       <div><dt>Cuota</dt><b>${ladoPick.cuota}</b></div>
-      <div><dt>EV</dt><b class="${evClase}">${ladoPick.ev!=null?(ladoPick.ev>0?"+":"")+pct(ladoPick.ev):"—"}</b></div>
-      <div><dt>Stake sugerido</dt><b>${stake>0?"$"+stake+" ("+pct(f,1)+")":"—"}</b></div>`;
+      <div><dt>EV</dt><b class="${evClase}">${ladoPick.ev!=null?(ladoPick.ev>0?"+":"")+pct(ladoPick.ev):"—"}</b></div>`;
   }
 
   return `<article class="partido ${clase}">
@@ -336,7 +352,7 @@ function tarjeta(m){
           <div><dt>Confianza</dt><b>${pct(m.confianza,0)}</b></div>
           ${stakeHtml}
         </div>
-        ${ladoPick.cuota?`<button class="mini" style="margin-top:10px" data-sel="${esc(m.pick)}" data-cuota="${ladoPick.cuota}" data-stake="${Math.round(kelly(ladoPick.p??0,ladoPick.cuota??0)*banca)}">Registrar</button>`:""}
+        ${ladoPick.cuota?`<button class="mini btn-boleta" style="margin-top:10px" data-partido="${esc(m.a)}__${esc(m.b)}__${esc(m.torneo)}" data-sel="${esc(m.pick)}" data-cuota="${ladoPick.cuota}">+ Agregar a boleta</button>`:""}
       </div>
     </div>
   </article>`;
@@ -390,15 +406,78 @@ function pintarSlate(s){
     ? `<details><summary>Ver los otros ${resto.length} partidos del slate</summary>${resto.map(tarjeta).join("")}</details>`
     : "";
 
-  document.querySelectorAll("[data-sel]").forEach(b=>b.addEventListener("click",()=>{
-    $("#f-sel").value=b.dataset.sel;
-    $("#f-cuota").value=b.dataset.cuota;
-    $("#f-stake").value=b.dataset.stake;
-    $("#f-fecha").value=new Date().toISOString().slice(0,10);
-    $("#f-sel").scrollIntoView({behavior:"smooth",block:"center"});
-    $("#f-cuota").focus();
+  aplicarEstadoBotonesBoleta();
+}
+
+/* ---------- Boleta (parlay) ---------- */
+function aplicarEstadoBotonesBoleta(){
+  document.querySelectorAll(".btn-boleta").forEach(b=>{
+    const en=boleta.some(x=>x.partido===b.dataset.partido);
+    b.textContent = en ? "✓ En la boleta" : "+ Agregar a boleta";
+    b.classList.toggle("fantasma", en);
+  });
+}
+
+function toggleBoleta(partido, sel, cuota){
+  const i=boleta.findIndex(x=>x.partido===partido);
+  if(i>=0) boleta.splice(i,1);
+  else boleta.push({partido, sel, cuota});
+  pintarBoleta();
+  aplicarEstadoBotonesBoleta();
+}
+
+function pintarBoleta(){
+  const caja=$("#caja-boleta");
+  if(!boleta.length){ caja.style.display="none"; return; }
+  caja.style.display="block";
+  const cuotaComb=boleta.reduce((p,x)=>p*x.cuota,1);
+  $("#boleta-cuota").textContent=`${boleta.length} selecciones · cuota combinada ${cuotaComb.toFixed(2)}`;
+  $("#boleta-lista").innerHTML=boleta.map((x,i)=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px">
+      <span>${esc(x.sel)} <span class="mono" style="color:var(--tinta-suave)">@${x.cuota}</span></span>
+      <button class="fantasma mini" data-quitar="${i}">Quitar</button>
+    </div>`).join("");
+  $("#boleta-lista").querySelectorAll("[data-quitar]").forEach(b=>b.addEventListener("click",()=>{
+    boleta.splice(parseInt(b.dataset.quitar),1);
+    pintarBoleta(); aplicarEstadoBotonesBoleta();
   }));
 }
+
+document.addEventListener("click",e=>{
+  const b=e.target.closest(".btn-boleta");
+  if(b) toggleBoleta(b.dataset.partido, b.dataset.sel, parseFloat(b.dataset.cuota));
+});
+
+$("#btn-vaciar").addEventListener("click",()=>{ boleta=[]; pintarBoleta(); aplicarEstadoBotonesBoleta(); });
+
+$("#btn-guardar").addEventListener("click",()=>{
+  const stake=parseFloat($("#f-stake").value);
+  const fecha=$("#f-fecha").value||new Date().toISOString().slice(0,10);
+  if(!boleta.length){ alert("La boleta está vacía."); return; }
+  if(!(stake>0)){ alert("Falta el stake."); return; }
+  const cuotaComb=boleta.reduce((p,x)=>p*x.cuota,1);
+  apuestas.push({
+    id:String(Date.now()),
+    fecha,
+    seleccion:boleta.map(x=>x.sel).join(" + "),
+    cuota:Math.round(cuotaComb*100)/100,
+    stake, cierre:null, resultado:null
+  });
+  boleta=[];
+  $("#f-stake").value="";
+  pintarBoleta(); aplicarEstadoBotonesBoleta(); persistir();
+});
+
+$("#btn-guardar-manual").addEventListener("click",()=>{
+  const sel=$("#f-sel").value.trim();
+  const cuota=parseFloat($("#f-cuota").value);
+  const stake=parseFloat($("#f-stake-manual").value);
+  const fecha=$("#f-fecha-manual").value||new Date().toISOString().slice(0,10);
+  if(!sel||!(cuota>1)||!(stake>0)){ alert("Faltan datos: selección, cuota mayor a 1 y stake mayor a 0."); return; }
+  apuestas.push({id:String(Date.now()),fecha,seleccion:sel,cuota,stake,cierre:null,resultado:null});
+  $("#f-sel").value="";$("#f-cuota").value="";$("#f-stake-manual").value="";
+  persistir();
+});
 
 /* ---------- Ratings ---------- */
 function pintarRatings(){
@@ -491,17 +570,6 @@ function pintarMetricas(){
 
 function persistir(){ guarda.escribir("tenis_apuestas",apuestas); pintarRegistro(); }
 
-$("#btn-guardar").addEventListener("click",()=>{
-  const sel=$("#f-sel").value.trim();
-  const cuota=parseFloat($("#f-cuota").value);
-  const stake=parseFloat($("#f-stake").value);
-  const fecha=$("#f-fecha").value||new Date().toISOString().slice(0,10);
-  if(!sel||!(cuota>1)||!(stake>0)){ alert("Faltan datos: selección, cuota mayor a 1 y stake mayor a 0."); return; }
-  apuestas.push({id:String(Date.now()),fecha,seleccion:sel,cuota,stake,cierre:null,resultado:null});
-  $("#f-sel").value="";$("#f-cuota").value="";$("#f-stake").value="";
-  persistir();
-});
-
 $("#btn-exportar").addEventListener("click",()=>{
   const filas=[["fecha","seleccion","cuota","stake","cierre","clv","resultado","pl"]]
     .concat(apuestas.map(a=>[a.fecha,a.seleccion,a.cuota,a.stake,a.cierre??"",clv(a)??"",a.resultado??"",pl(a)]));
@@ -521,6 +589,7 @@ $("#f-buscar").addEventListener("input",pintarRatings);
 $("#f-orden").addEventListener("change",pintarRatings);
 $("#f-torneo").addEventListener("change",()=>{ if(slateActual) pintarSlate(slateActual); });
 $("#f-fecha").value=new Date().toISOString().slice(0,10);
+$("#f-fecha-manual").value=new Date().toISOString().slice(0,10);
 
 pintarRegistro();
 cargar();
